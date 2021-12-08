@@ -5,6 +5,7 @@ from pprint import pprint
 import itertools as it
 import functools as ft
 
+
 def get_all_sets_with_odd_overlap(non_zero_neighbor_sets, overlap, d):
     assert d < 10
     assert 0 in overlap
@@ -81,6 +82,10 @@ def set_remove_add_elem(s, e):
 # d = 4
 # 0,1; 0,2; 0,3; 0,4;   1,2; 1,3; 1,4; 2,3; 2,4; 3;4   0,1,2,3; 0,1,2,4; 0,1,3,4; 0,2,3,4;   1,2,3,4
 
+# K is the set that needs to be oddly counted, everything else needs to be
+# evenly counted
+
+
 def d_3_main():
     neighbors_sets = get_subsets_that_sum_to(
         [[0, 1], [0, 2], [0, 3], [1, 11], [1, 12], [2, 21], [2, 22], [3, 31], [3, 32],
@@ -120,12 +125,11 @@ def d_3_main():
         if num_quads != 0:
             latex_str += f"\\sin^{{{num_quads}}}\\left(\\frac{{\\gamma}}{{2}}\\right)"
         if tot_edges-num_edges != 0:
-            latex_str += f"\\sin^{{{tot_edges-num_edges}}}\\left(\\gamma\\right)"
+            latex_str += f"\\cos^{{{tot_edges-num_edges}}}\\left(\\gamma\\right)"
         if tot_quads-num_quads != 0:
-            latex_str += f"\\sin^{{{tot_quads-num_quads}}}\\left(\\frac{{\\gamma}}{{2}}\\right)"
+            latex_str += f"\\cos^{{{tot_quads-num_quads}}}\\left(\\frac{{\\gamma}}{{2}}\\right)"
 
     print(latex_str)
-
 
 
 def d_4_main():
@@ -190,5 +194,5 @@ def d_4_main():
 
 
 if __name__ == "__main__":
-    #d_3_main()
-    d_4_main()
+    d_3_main()
+    #d_4_main()
