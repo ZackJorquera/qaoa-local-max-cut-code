@@ -4,6 +4,7 @@ from hamiltonian_builder import *
 from pprint import pprint
 import itertools as it
 import functools as ft
+#from numba import jit
 
 
 def get_all_sets_with_odd_overlap(non_zero_neighbor_sets, overlap, d):
@@ -42,12 +43,21 @@ def do_thing():
     return ret_set
 
 
+#@jit(nopython=True)
 def reduce_odds(set_if_sets):
     flattened = [val for set_elem in set_if_sets for val in set_elem]
     active_nodes = np.remainder(np.bincount(flattened), 2).nonzero()[0]
     return active_nodes
 
 
+#@jit(nopython=True)
+def reduce_odds_sct(set_if_sets):
+    flattened = [val for set_elem in set_if_sets for val in set_elem[0]]
+    active_nodes = np.remainder(np.bincount(flattened), 2).nonzero()[0]
+    return active_nodes
+
+
+#@jit(nopython=True)
 def get_subsets_that_sum_to(all_set, target):
     ret_sets = []
     n = len(all_set)
@@ -56,6 +66,23 @@ def get_subsets_that_sum_to(all_set, target):
         subset = [j for j in range(n) if (i & (1 << j))]
 
         flattened = [val for set_ind in subset for val in all_set[set_ind]]
+        active_nodes = np.remainder(np.bincount(flattened), 2).nonzero()[0]
+
+        if active_nodes.size == np_target.size and (active_nodes-np_target == 0).all():
+            ret_sets.append([all_set[set_ind] for set_ind in subset])
+
+    return ret_sets
+
+
+#@jit(nopython=True)
+def get_subsets_that_sum_to_sct(all_set, target):
+    ret_sets = []
+    n = len(all_set)
+    np_target = np.array(target)
+    for i in range(1 << n):
+        subset = [j for j in range(n) if (i & (1 << j))]
+
+        flattened = [val for set_ind in subset for val in all_set[set_ind][0]]
         active_nodes = np.remainder(np.bincount(flattened), 2).nonzero()[0]
 
         if active_nodes.size == np_target.size and (active_nodes-np_target == 0).all():
@@ -194,5 +221,5 @@ def d_4_main():
 
 
 if __name__ == "__main__":
-    d_3_main()
-    #d_4_main()
+    #d_3_main()
+    d_4_main()
