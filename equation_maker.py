@@ -9,7 +9,8 @@ import itertools as it
 import more_itertools as mit
 import functools as ft
 from collections import Counter
-#from numba import jit
+# from numba import jit
+# import numba
 
 
 #@jit(nopython=True)
@@ -116,6 +117,11 @@ def make_equation_for(K, d, str_format="latex"):
     return eq_str
 
 
+# @jit(nopython=True)
+def count_list(list: list[tuple[list[int], int]]):
+     return np.bincount(np.fromiter(map(lambda t: t[1], list), dtype=np.int32), minlength=4)
+
+
 #@jit(nopython=True)
 def make_equation_for_d4(K, str_format="latex"):
     str_format = str_format.lower()
@@ -154,8 +160,10 @@ def make_equation_for_d4(K, str_format="latex"):
 
             j, N = 0, len(just_neighbors_sets_L_eq_0_that_sum_to_K)
             for ns in just_neighbors_sets_L_eq_0_that_sum_to_K:
-                ng = ns.copy()
+                start_time = time.time()
+                ng: list[tuple[list[int], int]] = ns.copy()
                 edge_neighbor_sets_builder = []
+                edge_neighbor_sets_builder_counts = []
                 for i in range(4):
                     if ([0, i + 1], 0) in ns:
                         nbs_tmp = [[([elem + 10 * (i) if elem >= 10 else elem * (i + 1) for elem in K[0]], K[1]) for K in nbs]
@@ -165,15 +173,15 @@ def make_equation_for_d4(K, str_format="latex"):
                         nbs_tmp = [[([elem + 10 * (i) if elem >= 10 else elem * (i + 1) for elem in K[0]], K[1]) for K in nbs]
                                   for nbs in neighbor_branch_subsets_that_sum_to_emptyset]
                     edge_neighbor_sets_builder.append(nbs_tmp)
+                    edge_neighbor_sets_builder_counts.append([count_list(nb_tmp) for nb_tmp in nbs_tmp])
 
-                start_time = time.time()
+                ng_count = count_list(ng)
                 type_counter += Counter(map(lambda ens: tuple(
-                    np.bincount(np.fromiter(map(lambda t: t[1], it.chain(ng, *ens)), dtype=np.int32), minlength=4)),
-                                            it.product(*edge_neighbor_sets_builder)))
+                    sum(ens) + ng_count), it.product(*edge_neighbor_sets_builder_counts)))
                 elp_time = time.time() - start_time
 
                 j += 1
-                sys.stdout.write(f"\r{j}/{N} : {elp_time:.2}s")
+                sys.stdout.write(f"\r{j}/{N} : {elp_time:.2}s ")
                 sys.stdout.flush()
 
             # print(f"all_set_count={all_set_count}")
@@ -190,8 +198,10 @@ def make_equation_for_d4(K, str_format="latex"):
 
             j, N = 0, len(just_neighbors_sets_L_eq_01_that_sum_to_K)
             for ns in just_neighbors_sets_L_eq_01_that_sum_to_K:
+                start_time = time.time()
                 ng = ns.copy()
                 edge_neighbor_sets_builder = []
+                edge_neighbor_sets_builder_counts = []
                 for edge in [[0, 2], [0, 3], [0, 4], [1, 11], [1, 12], [1, 13]]:
                     if (edge, 0) in ns:
                         nbs_tmp = [[([edge[0] if elem == 0 else elem + 10 * (edge[1]-1) if elem >= 10 else elem * edge[1] for elem in K[0]], K[1]) for K in nbs]
@@ -201,15 +211,15 @@ def make_equation_for_d4(K, str_format="latex"):
                         nbs_tmp = [[([edge[0] if elem == 0 else elem + 10 * (edge[1]-1) if elem >= 10 else elem * edge[1] for elem in K[0]], K[1]) for K in nbs]
                                    for nbs in neighbor_branch_subsets_that_sum_to_emptyset]
                     edge_neighbor_sets_builder.append(nbs_tmp)
+                    edge_neighbor_sets_builder_counts.append([count_list(nb_tmp) for nb_tmp in nbs_tmp])
 
-                start_time = time.time()
+                ng_count = count_list(ng)
                 type_counter += Counter(map(lambda ens: tuple(
-                    np.bincount(np.fromiter(map(lambda t: t[1], it.chain(ng, *ens)), dtype=np.int32), minlength=4)),
-                                            it.product(*edge_neighbor_sets_builder)))
+                    sum(ens) + ng_count), it.product(*edge_neighbor_sets_builder_counts)))
                 elp_time = time.time() - start_time
 
                 j += 1
-                sys.stdout.write(f"\r{j}/{N} : {elp_time:.5}s")
+                sys.stdout.write(f"\r{j}/{N} : {elp_time:.5}s ")
                 sys.stdout.flush()
         else:
             continue
