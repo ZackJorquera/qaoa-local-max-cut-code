@@ -4,11 +4,13 @@ use std::fs::File;
 use std::hash::Hash;
 use std::ops::Rem;
 use std::collections::HashSet;
+use std::sync::Mutex;
 use std::time::SystemTime;
 use ndarray::prelude::*;
 use counter::Counter;
 use itertools::Itertools;
 use std::io::Write;
+use rayon::prelude::*;
 
 fn powerset<T>(s: &[T]) -> Vec<Vec<T>> where T: Clone {
     (0..2usize.pow(s.len() as u32)).map(|i| {
@@ -16,6 +18,16 @@ fn powerset<T>(s: &[T]) -> Vec<Vec<T>> where T: Clone {
                              .map(|(_, element)| element.clone())
                              .collect()
      }).collect()
+}
+
+fn powerset_par<T: Send + Sync>(s: &[T]) -> impl ParallelIterator<Item=Vec<T>> + '_
+where 
+    T: Clone
+{
+    (0..2usize.pow(s.len() as u32)).into_par_iter().map(|i|
+        s.iter().enumerate().filter(|&(t, _)| (i >> t) % 2 == 1)
+                            .map(|(_, element)| element.clone())
+                            .collect())
 }
 
 // len(set(a).intersection(set(b))) % 2 == 1
@@ -49,6 +61,29 @@ fn get_subsets_that_sum_to_sct(all_set: &[(Vec<i32>, i32)], target: &[i32]) -> V
         }
     }
     ret_set
+}
+
+fn get_subsets_that_sum_to_sct_2(all_set: &[(Vec<i32>, i32)], target: &[i32]) -> Vec<Vec<(Vec<i32>, i32)>> {
+    let ret_set: Mutex<Vec<Vec<(Vec<i32>, i32)>>> = Mutex::new(vec![]);
+    let np_target = Array1::from_iter(target.iter().cloned());
+
+    powerset_par(all_set).for_each(|subset| {
+        let bins = subset.iter().map(|e| e.0.to_owned()).flatten().fold(vec![], |mut bins, num| {
+            if bins.len() <= num as usize {
+                bins.extend_from_slice(&vec![0; num as usize - bins.len() + 1]);
+            }
+            bins[num as usize] += 1;
+            bins
+        });
+        let active_nodes = Array::from_iter(Array::from_vec(bins).rem(2i32)
+            .indexed_iter()
+            .filter_map(|(i, v)| (*v != 0).then(|| i as i32)));
+
+        if np_target.shape() == active_nodes.shape() && np_target.eq(&active_nodes) {
+            ret_set.lock().unwrap().push(subset)
+        }
+    });
+    ret_set.into_inner().unwrap()
 }
 
 
@@ -93,7 +128,7 @@ fn make_equation_for_d4(K: &[i32], str_format: &str) -> String {
     let str_format = str_format.to_lowercase();
     assert!(str_format == "latex" || str_format ==  "mathematica" || str_format ==  "desmos" || str_format ==  "python");
     let mut eq_str = String::new();
-    assert!(K == [0, 1] || K == [0, 11]);
+    // assert!(K == [0, 1] || K == [0, 11]);
 
     let subsets = powerset(K);
 
@@ -104,6 +139,11 @@ fn make_equation_for_d4(K: &[i32], str_format: &str) -> String {
     let just_neighbor_sets_L_eq_01 = vec![(vec![0, 2], 0), (vec![0, 3], 0), (vec![0, 4], 0), (vec![1, 11], 0), (vec![1, 12], 0), (vec![1, 13], 0),
                                           (vec![0, 11], 1), (vec![0, 12], 1), (vec![0, 13], 1), (vec![1, 2], 1), (vec![1, 3], 1), (vec![1, 4], 1),
                                           (vec![0, 2, 3, 4], 2), (vec![1, 11, 12, 13], 2), (vec![0, 11, 12, 13], 3), (vec![1, 2, 3, 4], 3)];
+    let just_neighbor_sets_L_eq_012 = vec![(vec![0, 3], 0), (vec![0, 4], 0), (vec![1, 11], 0), (vec![1, 12], 0), (vec![1, 13], 0),
+                                           (vec![0, 11], 1), (vec![0, 12], 1), (vec![0, 13], 1), (vec![2, 21], 0), (vec![2, 22], 0), (vec![2, 23], 0),
+                                           (vec![0, 21], 1), (vec![0, 22], 1), (vec![0, 23], 1), (vec![1, 3], 1), (vec![1, 4], 1), (vec![2, 3], 1), (vec![2, 4], 1),
+                                           (vec![0, 1, 2, 3], 2), (vec![0, 1, 2, 4], 2), (vec![1, 11, 12, 13], 2), (vec![2, 21, 22, 23], 2), 
+                                           (vec![0, 11, 12, 13], 3), (vec![0, 21, 22, 23], 3)];
     let just_neighbor_sets_L_eq_011 = vec![(vec![0, 1], 0), (vec![0, 2], 0), (vec![0, 3], 0), (vec![0, 4], 0), (vec![1, 11], 0), (vec![11, 111], 0),
                                            (vec![11, 112], 0), (vec![11, 113], 0), (vec![0, 12], 1), (vec![0, 13], 1), (vec![11, 12], 1), (vec![11, 13], 1),
                                            (vec![0, 2, 3, 4], 2), (vec![0, 1, 3, 4], 2), (vec![0, 1, 2, 4], 2), (vec![0, 1, 2, 3], 2), (vec![0, 1, 12, 13], 2),
@@ -122,8 +162,8 @@ fn make_equation_for_d4(K: &[i32], str_format: &str) -> String {
         let just_neighbor_sets;
         let mut type_counter = Counter::new();
 
-        if L == [0] && K == [0, 1] {
-            mult_factor = 2;
+        if L == [0] && (K == [0, 1] || K == [0, 1, 2, 3] ) {
+            mult_factor = if K == [0, 1] {2} else {1};
             num_neighbor_branchs = 4;
             let just_neighbor_sets_L_eq_0_with_overlap = just_neighbor_sets_L_eq_0.iter().cloned().unique()
                 .filter(|ns| odd_overlap(&ns.0, &L)).collect::<Vec<_>>();
@@ -168,13 +208,19 @@ fn make_equation_for_d4(K: &[i32], str_format: &str) -> String {
                 std::io::stdout().flush().unwrap();
             }
         } 
-        else if L == [0] && K == [0, 11] {
-            mult_factor = 2;
+        else if (L == [0] && K == [0, 11]) || (L == [1] && K == [0, 1, 2, 3]) {
+            let (K, L) = if K == [0, 11] {
+                mult_factor = 2;
+                (K.to_vec(), L.clone())
+            } else {
+                mult_factor = 3;
+                (vec![0, 1, 11, 12], vec![0])
+            };
             num_neighbor_branchs = 3;
             let just_neighbor_sets_L_eq_0_with_overlap = just_neighbor_sets_L_eq_0.iter().cloned()
                 .chain(neighbor_branch_sets.iter().cloned()).unique()
                 .filter(|ns| odd_overlap(&ns.0, &L)).collect::<Vec<_>>();
-            let just_neighbors_sets_L_eq_0_that_sum_to_K = get_subsets_that_sum_to_sct(&just_neighbor_sets_L_eq_0_with_overlap, K);
+            let just_neighbors_sets_L_eq_0_that_sum_to_K = get_subsets_that_sum_to_sct(&just_neighbor_sets_L_eq_0_with_overlap, &K);
             just_neighbor_sets = just_neighbor_sets_L_eq_0_with_overlap.clone();
 
             let mut j = 0;
@@ -215,11 +261,8 @@ fn make_equation_for_d4(K: &[i32], str_format: &str) -> String {
                 std::io::stdout().flush().unwrap();
             }
         } 
-        else if L == [1] || L == [11] {
-            continue;
-        }
-        else if L == [0, 1] || L == [0, 11] {
-            mult_factor = 1;
+        else if (L == [0, 1] || L == [0, 11]) && (K == [0, 1] || K == [0, 11] || K == [0, 1, 2, 3]) {
+            mult_factor = if K == [0, 1, 2, 3] {3} else {1};
             num_neighbor_branchs = 6;
             let just_neighbors_sets_that_sum_to_K;
             let edges;
@@ -263,13 +306,28 @@ fn make_equation_for_d4(K: &[i32], str_format: &str) -> String {
                     edge_neighbor_sets_builder_counts.push(nbs_tmp.iter().map(|nb_tmp| count_list(nb_tmp)).collect::<Vec<_>>());
                     edge_neighbor_sets_builder.push(nbs_tmp);
                 }
-
+                
+                // let ng_count = count_list(&ng);
+                // type_counter += edge_neighbor_sets_builder_counts.into_iter()
+                //     .multi_cartesian_product().map(|ens| {
+                //         let sum = &ng_count + &ens[0] + &ens[1] + &ens[2] + &ens[3] + &ens[4] + &ens[5];
+                //         (sum[0], sum[1], sum[2], sum[3])
+                //     }).collect::<Counter<_>>();
+                // let elp_time = start.elapsed().unwrap().as_secs_f32();
+                
                 let ng_count = count_list(&ng);
-                type_counter += edge_neighbor_sets_builder_counts.into_iter()
-                    .multi_cartesian_product().map(|ens| {
-                        let sum = &ng_count + &ens[0] + &ens[1] + &ens[2] + &ens[3] + &ens[4] + &ens[5];
-                        (sum[0], sum[1], sum[2], sum[3])
-                    }).collect::<Counter<_>>();
+                let last_ensb = edge_neighbor_sets_builder_counts.pop().unwrap();
+                let this_type_counter = Mutex::new(Counter::new());
+                last_ensb.into_par_iter().for_each(|ens5| {
+                    let tmp_sum = &ng_count + &ens5;
+                    let tc = edge_neighbor_sets_builder_counts.clone().into_iter()
+                        .multi_cartesian_product().map(|ens| {
+                            let sum = &tmp_sum + &ens[0] + &ens[1] + &ens[2] + &ens[3] + &ens[4];
+                            (sum[0], sum[1], sum[2], sum[3])
+                        }).collect::<Counter<_>>();
+                        *this_type_counter.lock().unwrap() += tc;
+                });
+                type_counter += this_type_counter.into_inner().unwrap();
                 let elp_time = start.elapsed().unwrap().as_secs_f32();
 
                 j += 1;
@@ -277,6 +335,87 @@ fn make_equation_for_d4(K: &[i32], str_format: &str) -> String {
                 std::io::stdout().flush().unwrap();
             }
         } 
+        else if L == [0, 1, 2] && K == [0, 1, 2, 3] {
+            mult_factor = 3;
+            num_neighbor_branchs = 8;
+            let just_neighbors_sets_that_sum_to_K;
+            let edges;
+            
+            let just_neighbor_sets_L_eq_012_with_overlap = just_neighbor_sets_L_eq_012.iter().cloned().unique()
+                .filter(|ns| odd_overlap(&ns.0, &L)).collect::<Vec<_>>();
+            just_neighbors_sets_that_sum_to_K = get_subsets_that_sum_to_sct_2(&just_neighbor_sets_L_eq_012_with_overlap, K);
+            just_neighbor_sets = just_neighbor_sets_L_eq_012_with_overlap.clone();
+            edges = [[0, 3], [0, 4], [1, 11], [1, 12], [1, 13], [2, 21], [2, 22], [2, 23]];
+            println!("done with thing");
+
+            let mut j = 0;
+            let N = just_neighbors_sets_that_sum_to_K.len();
+
+            for ns in just_neighbors_sets_that_sum_to_K {
+                let start = SystemTime::now();
+                let mut ng = ns.clone();
+                let mut edge_neighbor_sets_builder = vec![];
+                let mut edge_neighbor_sets_builder_counts = vec![];
+                for ref edge in edges {
+                    let nbs_tmp = if let Some(ind) = ng.iter().position(|e| *e == (vec![edge[0], edge[1]], 0)) {
+                        ng.remove(ind);
+                        neighbor_branch_subsets_that_sum_to_01.iter().cloned().map(|nbs| 
+                            nbs.into_iter().map(|k| (k.0.into_iter().map(|elem| 
+                                if elem == 0 {edge[0]} else if elem >= 10 {elem + 10 * (edge[1]-1)} else {elem * edge[1]})
+                                .collect::<Vec<_>>(), k.1)).collect())
+                            .collect::<Vec<Vec<_>>>()
+                    } else {
+                        neighbor_branch_subsets_that_sum_to_emptyset.iter().cloned().map(|nbs| 
+                            nbs.into_iter().map(|k| (k.0.into_iter().map(|elem| 
+                                if elem == 0 {edge[0]} else if elem >= 10 {elem + 10 * (edge[1]-1)} else {elem * edge[1]})
+                                .collect::<Vec<_>>(), k.1)).collect())
+                            .collect::<Vec<Vec<_>>>()
+                    };
+                    edge_neighbor_sets_builder_counts.push(nbs_tmp.iter().map(|nb_tmp| count_list(nb_tmp)).collect::<Vec<_>>());
+                    edge_neighbor_sets_builder.push(nbs_tmp);
+                }
+                
+                // let ng_count = count_list(&ng);
+                // type_counter += edge_neighbor_sets_builder_counts.into_iter()
+                //     .multi_cartesian_product().map(|ens| {
+                //         let sum = &ng_count + &ens[0] + &ens[1] + &ens[2] + &ens[3] + &ens[4] + &ens[5] + &ens[6] + &ens[7];
+                //         (sum[0], sum[1], sum[2], sum[3])
+                //     }).collect::<Counter<_>>();
+                // let elp_time = start.elapsed().unwrap().as_secs_f32();
+                
+                let ng_count = count_list(&ng);
+                let last_ensb = edge_neighbor_sets_builder_counts.pop().unwrap();
+                let this_type_counter = Mutex::new(Counter::new());
+                last_ensb.into_par_iter().for_each(|ens7| {
+                    let tmp_sum = &ng_count + &ens7;
+                    let tc = edge_neighbor_sets_builder_counts.clone().into_iter()
+                        .multi_cartesian_product().map(|ens| {
+                            let sum = &tmp_sum + &ens[0] + &ens[1] + &ens[2] + &ens[3] + &ens[4] + &ens[5] + &ens[6];
+                            (sum[0], sum[1], sum[2], sum[3])
+                        }).collect::<Counter<_>>();
+                        *this_type_counter.lock().unwrap() += tc;
+                });
+                type_counter += this_type_counter.into_inner().unwrap();
+                let elp_time = start.elapsed().unwrap().as_secs_f32();
+
+                j += 1;
+                print!("\r{}/{} : {:.5}s ", j, N, elp_time);
+                std::io::stdout().flush().unwrap();
+            }
+        } 
+        // These are all just continues
+        else if (L == [1] || L == [11]) && (K == [0, 1] || K == [0, 11]) {
+            continue;
+        }
+        else if (L == [2] || L == [3]) && K == [0, 1, 2, 3] {
+            continue;
+        }
+        else if (L == [0, 2] || L == [0, 3]) && K == [0, 1, 2, 3] {
+            continue;
+        }
+        else if (L == [0, 1, 3] || L == [0, 2, 3]) && K == [0, 1, 2, 3] {
+            continue;
+        }
         else {
             continue;
         }
@@ -341,9 +480,9 @@ fn make_equation_for_d4(K: &[i32], str_format: &str) -> String {
 
 fn make_expected_val_equation_string_for_d_4(str_format: &str) -> String {
     let eq_str1 = make_equation_for_d4(&[0, 1], str_format);
-    let eq_str2 = make_equation_for_d4(&[0, 11], str_format);
-    let eq_str3 = String::from("0");
-    let eq_str4 = String::from("0");
+    let eq_str2 = make_equation_for_d4(&[0, 11], str_format); // should this be [1, 2]
+    let eq_str3 = make_equation_for_d4(&[0, 1, 2, 3], str_format);
+    let eq_str4 = String::from("0"); // make_equation_for_d4(&[1, 2, 3, 4], str_format);
 
     if str_format == "mathematica" {
         format!("11n/16 - 3n/4 ({}) - 3n/8 ({}) + n/4 ({}) + 3n/16 ({})", eq_str1, eq_str2, eq_str3, eq_str4)
