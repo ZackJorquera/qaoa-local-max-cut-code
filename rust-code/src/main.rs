@@ -1,3 +1,5 @@
+// https://curc.readthedocs.io/en/latest/index.html
+
 #![allow(non_snake_case)]
 
 use std::fs::File;
@@ -20,9 +22,9 @@ fn powerset<T>(s: &[T]) -> Vec<Vec<T>> where T: Clone {
      }).collect()
 }
 
-fn powerset_par<T: Send + Sync>(s: &[T]) -> impl ParallelIterator<Item=Vec<T>> + '_
+fn powerset_par<T>(s: &[T]) -> impl ParallelIterator<Item=Vec<T>> + '_
 where 
-    T: Clone
+    T: Clone + Send + Sync
 {
     (0..2usize.pow(s.len() as u32)).into_par_iter().map(|i|
         s.iter().enumerate().filter(|&(t, _)| (i >> t) % 2 == 1)
@@ -57,7 +59,7 @@ fn get_subsets_that_sum_to_sct(all_set: &[(Vec<i32>, i32)], target: &[i32]) -> V
             .filter_map(|(i, v)| (*v != 0).then(|| i as i32)));
 
         if np_target.shape() == active_nodes.shape() && np_target.eq(&active_nodes) {
-            ret_set.push(subset)
+            ret_set.push(subset);
         }
     }
     ret_set
@@ -80,9 +82,13 @@ fn get_subsets_that_sum_to_sct_2(all_set: &[(Vec<i32>, i32)], target: &[i32]) ->
             .filter_map(|(i, v)| (*v != 0).then(|| i as i32)));
 
         if np_target.shape() == active_nodes.shape() && np_target.eq(&active_nodes) {
-            ret_set.lock().unwrap().push(subset)
+            let mut ret_set_lock = ret_set.lock().unwrap();
+            ret_set_lock.push(subset);
+            print!("\rvec size: {} ", ret_set_lock.len());
+            std::io::stdout().flush().unwrap();
         }
     });
+    println!("");
     ret_set.into_inner().unwrap()
 }
 
@@ -144,6 +150,12 @@ fn make_equation_for_d4(K: &[i32], str_format: &str) -> String {
                                            (vec![0, 21], 1), (vec![0, 22], 1), (vec![0, 23], 1), (vec![1, 3], 1), (vec![1, 4], 1), (vec![2, 3], 1), (vec![2, 4], 1),
                                            (vec![0, 1, 2, 3], 2), (vec![0, 1, 2, 4], 2), (vec![1, 11, 12, 13], 2), (vec![2, 21, 22, 23], 2), 
                                            (vec![0, 11, 12, 13], 3), (vec![0, 21, 22, 23], 3)];
+    let just_neighbor_sets_L_eq_0123 = vec![(vec![0, 3], 0), (vec![0, 4], 0), (vec![1, 11], 0), (vec![1, 12], 0), (vec![1, 13], 0),
+                                            (vec![0, 11], 1), (vec![0, 12], 1), (vec![0, 13], 1), (vec![2, 21], 0), (vec![2, 22], 0), (vec![2, 23], 0),
+                                            (vec![0, 21], 1), (vec![0, 22], 1), (vec![0, 23], 1), (vec![3, 31], 0), (vec![3, 32], 0), (vec![3, 33], 0),
+                                            (vec![0, 31], 1), (vec![0, 32], 1), (vec![0, 33], 1), (vec![1, 4], 1), (vec![2, 4], 1), (vec![3, 4], 1),
+                                            (vec![0, 1, 2, 4], 2), (vec![0, 1, 3, 4], 2), (vec![0, 2, 3, 4], 2), (vec![1, 11, 12, 13], 2), (vec![2, 21, 22, 23], 2), (vec![3, 31, 32, 33], 2), 
+                                            (vec![0, 11, 12, 13], 3), (vec![0, 21, 22, 23], 3), (vec![0, 31, 32, 33], 3), (vec![1, 2, 3, 4], 3)];
     let just_neighbor_sets_L_eq_011 = vec![(vec![0, 1], 0), (vec![0, 2], 0), (vec![0, 3], 0), (vec![0, 4], 0), (vec![1, 11], 0), (vec![11, 111], 0),
                                            (vec![11, 112], 0), (vec![11, 113], 0), (vec![0, 12], 1), (vec![0, 13], 1), (vec![11, 12], 1), (vec![11, 13], 1),
                                            (vec![0, 2, 3, 4], 2), (vec![0, 1, 3, 4], 2), (vec![0, 1, 2, 4], 2), (vec![0, 1, 2, 3], 2), (vec![0, 1, 12, 13], 2),
@@ -269,13 +281,13 @@ fn make_equation_for_d4(K: &[i32], str_format: &str) -> String {
             if L == [0, 1] {
                 let just_neighbor_sets_L_eq_01_with_overlap = just_neighbor_sets_L_eq_01.iter().cloned().unique()
                     .filter(|ns| odd_overlap(&ns.0, &L)).collect::<Vec<_>>();
-                just_neighbors_sets_that_sum_to_K = get_subsets_that_sum_to_sct(&just_neighbor_sets_L_eq_01_with_overlap, K);
+                just_neighbors_sets_that_sum_to_K = get_subsets_that_sum_to_sct_2(&just_neighbor_sets_L_eq_01_with_overlap, K);
                 just_neighbor_sets = just_neighbor_sets_L_eq_01_with_overlap.clone();
                 edges = [[0, 2], [0, 3], [0, 4], [1, 11], [1, 12], [1, 13]];
             } else if L == [0, 11] {
                 let just_neighbor_sets_L_eq_011_with_overlap = just_neighbor_sets_L_eq_011.iter().cloned().unique()
                     .filter(|ns| odd_overlap(&ns.0, &L)).collect::<Vec<_>>();
-                just_neighbors_sets_that_sum_to_K = get_subsets_that_sum_to_sct(&just_neighbor_sets_L_eq_011_with_overlap, K);
+                just_neighbors_sets_that_sum_to_K = get_subsets_that_sum_to_sct_2(&just_neighbor_sets_L_eq_011_with_overlap, K);
                 just_neighbor_sets = just_neighbor_sets_L_eq_011_with_overlap.clone();
                 edges = [[0, 2], [0, 3], [0, 4], [11, 111], [11, 112], [11, 113]];
             } else { unimplemented!(); }
@@ -306,27 +318,21 @@ fn make_equation_for_d4(K: &[i32], str_format: &str) -> String {
                     edge_neighbor_sets_builder_counts.push(nbs_tmp.iter().map(|nb_tmp| count_list(nb_tmp)).collect::<Vec<_>>());
                     edge_neighbor_sets_builder.push(nbs_tmp);
                 }
-                
-                // let ng_count = count_list(&ng);
-                // type_counter += edge_neighbor_sets_builder_counts.into_iter()
-                //     .multi_cartesian_product().map(|ens| {
-                //         let sum = &ng_count + &ens[0] + &ens[1] + &ens[2] + &ens[3] + &ens[4] + &ens[5];
-                //         (sum[0], sum[1], sum[2], sum[3])
-                //     }).collect::<Counter<_>>();
-                // let elp_time = start.elapsed().unwrap().as_secs_f32();
-                
+
                 let ng_count = count_list(&ng);
-                let last_ensb = edge_neighbor_sets_builder_counts.pop().unwrap();
+                let mut last2_ensb = edge_neighbor_sets_builder_counts.split_off(4);
                 let this_type_counter = Mutex::new(Counter::new());
-                last_ensb.into_par_iter().for_each(|ens5| {
-                    let tmp_sum = &ng_count + &ens5;
-                    let tc = edge_neighbor_sets_builder_counts.clone().into_iter()
-                        .multi_cartesian_product().map(|ens| {
-                            let sum = &tmp_sum + &ens[0] + &ens[1] + &ens[2] + &ens[3] + &ens[4];
-                            (sum[0], sum[1], sum[2], sum[3])
-                        }).collect::<Counter<_>>();
-                        *this_type_counter.lock().unwrap() += tc;
-                });
+                last2_ensb.pop().unwrap().into_iter()
+                    .cartesian_product(last2_ensb.pop().unwrap())
+                    .par_bridge().for_each(|(ens4, ens5)| {
+                        let tmp_sum = &ng_count + &ens4 + &ens5;
+                        let tc = edge_neighbor_sets_builder_counts.clone().into_iter()
+                            .multi_cartesian_product().map(|ens| {
+                                let sum = &tmp_sum + &ens[0] + &ens[1] + &ens[2] + &ens[3];
+                                (sum[0], sum[1], sum[2], sum[3])
+                            }).collect::<Counter<_>>();
+                            *this_type_counter.lock().unwrap() += tc;
+                    });
                 type_counter += this_type_counter.into_inner().unwrap();
                 let elp_time = start.elapsed().unwrap().as_secs_f32();
 
@@ -346,10 +352,11 @@ fn make_equation_for_d4(K: &[i32], str_format: &str) -> String {
             just_neighbors_sets_that_sum_to_K = get_subsets_that_sum_to_sct_2(&just_neighbor_sets_L_eq_012_with_overlap, K);
             just_neighbor_sets = just_neighbor_sets_L_eq_012_with_overlap.clone();
             edges = [[0, 3], [0, 4], [1, 11], [1, 12], [1, 13], [2, 21], [2, 22], [2, 23]];
-            println!("done with thing");
 
             let mut j = 0;
             let N = just_neighbors_sets_that_sum_to_K.len();
+            print!("\r0/{}", N);
+            std::io::stdout().flush().unwrap();
 
             for ns in just_neighbors_sets_that_sum_to_K {
                 let start = SystemTime::now();
@@ -374,27 +381,90 @@ fn make_equation_for_d4(K: &[i32], str_format: &str) -> String {
                     edge_neighbor_sets_builder_counts.push(nbs_tmp.iter().map(|nb_tmp| count_list(nb_tmp)).collect::<Vec<_>>());
                     edge_neighbor_sets_builder.push(nbs_tmp);
                 }
-                
-                // let ng_count = count_list(&ng);
-                // type_counter += edge_neighbor_sets_builder_counts.into_iter()
-                //     .multi_cartesian_product().map(|ens| {
-                //         let sum = &ng_count + &ens[0] + &ens[1] + &ens[2] + &ens[3] + &ens[4] + &ens[5] + &ens[6] + &ens[7];
-                //         (sum[0], sum[1], sum[2], sum[3])
-                //     }).collect::<Counter<_>>();
-                // let elp_time = start.elapsed().unwrap().as_secs_f32();
-                
+
+                // Let's take a step back here, this loop runs 16^8 (4.5 billion) times
+                // which takes about 330 seconds to run. combines with the for loop of
+                // 16384, that will take over 90 days.
                 let ng_count = count_list(&ng);
-                let last_ensb = edge_neighbor_sets_builder_counts.pop().unwrap();
+                let mut last2_ensb = edge_neighbor_sets_builder_counts.split_off(6);
                 let this_type_counter = Mutex::new(Counter::new());
-                last_ensb.into_par_iter().for_each(|ens7| {
-                    let tmp_sum = &ng_count + &ens7;
-                    let tc = edge_neighbor_sets_builder_counts.clone().into_iter()
-                        .multi_cartesian_product().map(|ens| {
-                            let sum = &tmp_sum + &ens[0] + &ens[1] + &ens[2] + &ens[3] + &ens[4] + &ens[5] + &ens[6];
-                            (sum[0], sum[1], sum[2], sum[3])
-                        }).collect::<Counter<_>>();
-                        *this_type_counter.lock().unwrap() += tc;
-                });
+                last2_ensb.pop().unwrap().into_iter()
+                    .cartesian_product(last2_ensb.pop().unwrap())
+                    .par_bridge().for_each(|(ens6, ens7)| {
+                        let tmp_sum = &ng_count + &ens6 + &ens7;
+                        let tc = edge_neighbor_sets_builder_counts.clone().into_iter()
+                            .multi_cartesian_product().map(|ens| {
+                                let sum = &tmp_sum + &ens[0] + &ens[1] + &ens[2] + &ens[3] + &ens[4] + &ens[5];
+                                (sum[0], sum[1], sum[2], sum[3])
+                            }).collect::<Counter<_>>();
+                            *this_type_counter.lock().unwrap() += tc;
+                    });
+                type_counter += this_type_counter.into_inner().unwrap();
+                let elp_time = start.elapsed().unwrap().as_secs_f32();
+
+                j += 1;
+                print!("\r{}/{} : {:.5}s ", j, N, elp_time);
+                std::io::stdout().flush().unwrap();
+            }
+        } 
+        else if L == [0, 1, 2, 3] && K == [0, 1, 2, 3] {
+            mult_factor = 1;
+            num_neighbor_branchs = 10;
+            let just_neighbors_sets_that_sum_to_K;
+            let edges;
+            
+            let just_neighbor_sets_L_eq_012_with_overlap = just_neighbor_sets_L_eq_0123.iter().cloned().unique()
+                .filter(|ns| odd_overlap(&ns.0, &L)).collect::<Vec<_>>();
+            just_neighbors_sets_that_sum_to_K = get_subsets_that_sum_to_sct_2(&just_neighbor_sets_L_eq_012_with_overlap, K);
+            just_neighbor_sets = just_neighbor_sets_L_eq_012_with_overlap.clone();
+            edges = [[0, 4], [1, 11], [1, 12], [1, 13], [2, 21], [2, 22], [2, 23], [3, 31], [3, 32], [3, 33]];
+
+            let mut j = 0;
+            let N = just_neighbors_sets_that_sum_to_K.len();
+            print!("\r0/{}", N);
+            std::io::stdout().flush().unwrap();
+
+            for ns in just_neighbors_sets_that_sum_to_K {
+                let start = SystemTime::now();
+                let mut ng = ns.clone();
+                let mut edge_neighbor_sets_builder = vec![];
+                let mut edge_neighbor_sets_builder_counts = vec![];
+                for ref edge in edges {
+                    let nbs_tmp = if let Some(ind) = ng.iter().position(|e| *e == (vec![edge[0], edge[1]], 0)) {
+                        ng.remove(ind);
+                        neighbor_branch_subsets_that_sum_to_01.iter().cloned().map(|nbs| 
+                            nbs.into_iter().map(|k| (k.0.into_iter().map(|elem| 
+                                if elem == 0 {edge[0]} else if elem >= 10 {elem + 10 * (edge[1]-1)} else {elem * edge[1]})
+                                .collect::<Vec<_>>(), k.1)).collect())
+                            .collect::<Vec<Vec<_>>>()
+                    } else {
+                        neighbor_branch_subsets_that_sum_to_emptyset.iter().cloned().map(|nbs| 
+                            nbs.into_iter().map(|k| (k.0.into_iter().map(|elem| 
+                                if elem == 0 {edge[0]} else if elem >= 10 {elem + 10 * (edge[1]-1)} else {elem * edge[1]})
+                                .collect::<Vec<_>>(), k.1)).collect())
+                            .collect::<Vec<Vec<_>>>()
+                    };
+                    edge_neighbor_sets_builder_counts.push(nbs_tmp.iter().map(|nb_tmp| count_list(nb_tmp)).collect::<Vec<_>>());
+                    edge_neighbor_sets_builder.push(nbs_tmp);
+                }
+
+                // This loops runs 16^10 (1 trillion) times. That is way to largo to 
+                // be run on my computer. As an estimation, i think that, with the for
+                // loop this will take more than 41000 years on my computer.
+                let ng_count = count_list(&ng);
+                let mut last2_ensb = edge_neighbor_sets_builder_counts.split_off(8);
+                let this_type_counter = Mutex::new(Counter::new());
+                last2_ensb.pop().unwrap().into_iter()
+                    .cartesian_product(last2_ensb.pop().unwrap())
+                    .par_bridge().for_each(|(ens8, ens9)| {
+                        let tmp_sum = &ng_count + &ens8 + &ens9;
+                        let tc = edge_neighbor_sets_builder_counts.clone().into_iter()
+                            .multi_cartesian_product().map(|ens| {
+                                let sum = &tmp_sum + &ens[0] + &ens[1] + &ens[2] + &ens[3] + &ens[4] + &ens[5] + &ens[6] + &ens[7];
+                                (sum[0], sum[1], sum[2], sum[3])
+                            }).collect::<Counter<_>>();
+                            *this_type_counter.lock().unwrap() += tc;
+                    });
                 type_counter += this_type_counter.into_inner().unwrap();
                 let elp_time = start.elapsed().unwrap().as_secs_f32();
 
